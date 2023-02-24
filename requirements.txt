@@ -1,0 +1,6 @@
+sunpy
+dfp
+numpy
+pandas
+torch
+torchvision
