@@ -23,7 +23,7 @@ Filepath = Union[Path, str]
 item = namedtuple("item", ["input", "mask", "target", "uid"])
 
 
-class CloudsDataset(Dataset):
+class SyntheticClouds(Dataset):
     """Dataset that facilitates the training of ML methods to remove clouds.
 
     This PyTorch dataset consists of cloudy images for Ca II and
@@ -65,12 +65,13 @@ class CloudsDataset(Dataset):
             catalogue: Filepath,
             transform: Optional[Callable] = None,
             download: bool = False,
-            download_path = None,
     ):
+        catalogue = Path(catalogue)
+        if catalogue.is_dir():
+            catalogue = catalogue/"synthetic-catalogue.csv"
         self.root = Path(catalogue).parent
         self.download = download
         self.transform = transform
-        self.download_path = download_path
         # load the data, downloading if necessary
         if not Path(catalogue).exists():
             self._download_data()
@@ -89,18 +90,28 @@ class CloudsDataset(Dataset):
             Citation string
 
         """
-        return "TODO"
+        return "Morgan, Jay Paul, Paiement, Adeline, & Aboudarham, Jean. (2023). Synthetically generated clouds on ground-based solar observations [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7684200"
 
     def _download_data(self):
-        answer = input(f"Data cannot be found at {self.root}. Do you want to download it? [y/n] ")
+        import urllib.request
+        import zipfile
+        
+        answer = input(f"Data cannot be found at '{self.root}'. Do you want to download it? [y/n] ")
         status_ok = False
         while answer not in ["y", "n"]:
             answer = input(f"Please answer with 'y' or 'n', you entered {answer}")
         if answer == "y":
-            # do download
-            status_ok = True
-        elif answer == "n":
-            status_ok = False
+            def progress(block_num, block_size, total_size):
+                if block_num % 10 == 0:
+                    down_size = f"{(block_num*block_size)/1000000000:.2f}/{total_size/1000000000:.2f} GB"
+                    perc_size = f"{round(100*((block_num*block_size)/total_size), 2):.2f}"
+                    print(f"Downloading archive: {down_size} ({perc_size}%)", end="\r", flush=True)
+            download_path = "https://zenodo.org/record/7684201/files/synthetic-clouds.zip?download=1"
+            urllib.request.urlretrieve(download_path, self.root/"synthetic-clouds.zip", progress)
+            with zipfile.ZipFile(self.root/"synthetic-clouds.zip", "r") as f:
+                f.extractall(self.root)
+            if (self.root/"synthetic-catalogue.csv").exists():
+                status_ok = True
         return status_ok
 
     def _get_date(self, input_p, target_p, mask_p):
@@ -307,83 +318,3 @@ class CloudsTransform:
         if hflip: args = self.__apply_many(tv.functional.hflip, *args)
         if vflip: args = self.__apply_many(tv.functional.vflip, *args)
         return args
-
-
-class SyntheticCloudsDataset(CloudsDataset):
-    """Synthetic dataset -- synthetic with strong labels.
-
-    Parameters
-    ----------
-    catalogue : str, Path
-        The path to the catalogue CSV file of the dataset.
-    train : bool
-        Toggle to use the training or testing subset of the data.
-    transform : Callable
-        The transformation function to apply to the input and target data.
-
-    Examples
-    --------
-
-    >>> s = SyntheticDataset()
-    >>> s[0]  # get the first sample
-
-    Since this class inherits from CloudsDataset, we have immediate
-    access to the same methods.
-
-    >>> s.plot(0)
-
-    Concatenation of datasets also works
-
-    >>> s2 = SyntheticDataset(train=False)
-    >>> combined = s + s2
-
-    """
-
-    def __init__(
-            self,
-            catalogue,
-            transform=None,
-            download=False,
-    ):
-        download_path = "TODO" # TODO
-        super().__init__(catalogue, transform, download, download_path)
-
-
-class RealCloudsDataset(CloudsDataset):
-    """Real clouds dataset.
-
-    Parameters
-    ----------
-    catalogue : str, Path
-        The path to the catalogue CSV file of the dataset.
-    train : bool
-        Toggle to use the training or testing subset of the data.
-    transform : Callable
-        The transformation function to apply to the input and target data.
-
-    Examples
-    --------
-
-    >>> s = CloudsDataset()
-    >>> s[0]  # get the first sample
-
-    Since this class inherits from CloudsDataset, we have immediate
-    access to the same methods.
-
-    >>> s.plot(0)
-
-    Concatenation of datasets also works
-
-    >>> s2 = SyntheticDataset(train=False)
-    >>> combined = s + s2
-
-    """
-
-    def __init__(
-            self,
-            catalogue,
-            transform=None,
-            download=False,
-    ):
-        download_path = "TODO" # TODO
-        super().__init__(catalogue, transform, download, download_path)
