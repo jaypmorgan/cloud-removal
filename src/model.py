@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Callable, Optional, Union
 
 # external imports
+import dfp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,7 +32,7 @@ class CloudAddition(CloudIdentity):
     def forward(self, cloudy_input, cloud_pred):
         cloud_pred = self.activation(cloud_pred)
         if self.squash:
-            cloud_pred = cloud_pred * 0.5 - 0.5
+            cloud_pred = cloud_pred * 0.5 + 0.5
         return cloudy_input + cloud_pred
 
 
@@ -49,7 +50,14 @@ class CloudDivision(CloudIdentity):
 
 
 class TrueUNet(nn.Module):
-    def __init__(self, n_blocks: int = 4, cleaner=CloudSubtraction, in_channels=1, out_channels=1, init_features=16):
+    def __init__(
+            self,
+            n_blocks: int = 6,
+            cleaner=lambda: CloudAddition(activation=dfp.identity, squash=False),
+            in_channels=1,
+            out_channels=1,
+            init_features=16
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
