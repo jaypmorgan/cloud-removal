@@ -41,15 +41,14 @@ class CloudDivision(CloudIdentity):
         super().__init__(*args, **kwargs)
 
     def forward(self, cloudy_input, cloud_pred):
-        if self.activation is not None:
-            cloud_pred = self.activation(cloud_pred)
+        cloud_pred = self.activation(cloud_pred)
         if self.squash:
             cloud_pred = cloud_pred * 0.5 + 0.5
         outputs = cloudy_input / (cloud_pred + 1e-5)
         return outputs
 
 
-class TrueUNet(nn.Module):
+class UNet(nn.Module):
     def __init__(
             self,
             n_blocks: int = 6,
@@ -73,7 +72,6 @@ class TrueUNet(nn.Module):
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.encoder4 = self._block(self.features * 4, self.features * 8, name="enc4")
         self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.bottleneck = self._block(self.features * 8, self.features * 16, name="bottleneck")
         self.upconv4 = nn.ConvTranspose2d(self.features * 16, self.features * 8, kernel_size=2, stride=2)
         self.decoder4 = self._block((self.features * 8) * 2, self.features * 8, name="dec4")
         self.upconv3 = nn.ConvTranspose2d(self.features * 8, self.features * 4, kernel_size=2, stride=2)
@@ -83,77 +81,17 @@ class TrueUNet(nn.Module):
         self.upconv1 = nn.ConvTranspose2d(self.features * 2, self.features, kernel_size=2, stride=2)
         self.decoder1 = self._block(self.features * 2, self.features, name="dec1")
         self.conv = nn.Conv2d(in_channels=self.features, out_channels=out_channels, kernel_size=1)
+        self.encoder5 = self._block(self.features * 8, self.features * 16, name="enc4")
+        self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.upconv5 = nn.ConvTranspose2d(self.features * 32, self.features * 16, kernel_size=2, stride=2)
+        self.decoder5 = self._block((self.features * 16) * 2, self.features * 16, name="dec4")
+        self.encoder6 = self._block(self.features * 16, self.features * 32, name="enc4")
+        self.pool6 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.upconv6 = nn.ConvTranspose2d(self.features * 64, self.features * 32, kernel_size=2, stride=2)
+        self.decoder6 = self._block((self.features * 32) * 2, self.features * 32, name="dec4")
+        self.bottleneck = self._block(self.features * 32, self.features * 64, name="bottleneck")
 
-        if self.n_blocks >= 5:
-            self.encoder5 = self._block(self.features * 8, self.features * 16, name="enc4")
-            self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)
-            self.upconv5 = nn.ConvTranspose2d(self.features * 32, self.features * 16, kernel_size=2, stride=2)
-            self.decoder5 = self._block((self.features * 16) * 2, self.features * 16, name="dec4")
-            self.bottleneck = self._block(self.features * 16, self.features * 32, name="bottleneck")
-
-        if self.n_blocks >= 6:
-            self.encoder6 = self._block(self.features * 16, self.features * 32, name="enc4")
-            self.pool6 = nn.MaxPool2d(kernel_size=2, stride=2)
-            self.upconv6 = nn.ConvTranspose2d(self.features * 64, self.features * 32, kernel_size=2, stride=2)
-            self.decoder6 = self._block((self.features * 32) * 2, self.features * 32, name="dec4")
-            self.bottleneck = self._block(self.features * 32, self.features * 64, name="bottleneck")
-        if self.n_blocks == 7:
-            self.encoder7 = self._block(self.features * 32, self.features * 64, name="enc7")
-            self.pool7 = nn.MaxPool2d(kernel_size=2, stride=2)
-            self.upconv7 = nn.ConvTranspose2d(self.features * 128, self.features * 64, kernel_size=2, stride=2)
-            self.decoder7 = self._block((self.features * 64) * 2, self.features * 64, name="dec7")
-            self.bottleneck = self._block(self.features * 64, self.features * 128, name="bottleneck")
-
-    def forward_4(self, x):
-        enc1 = self.encoder1(x)
-        enc2 = self.encoder2(self.pool1(enc1))
-        enc3 = self.encoder3(self.pool2(enc2))
-        enc4 = self.encoder4(self.pool3(enc3))
-
-        bottleneck = self.bottleneck(self.pool4(enc4))
-
-        dec4 = self.upconv4(bottleneck)
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
-        dec3 = self.upconv3(dec4)
-        dec3 = torch.cat((dec3, enc3), dim=1)
-        dec3 = self.decoder3(dec3)
-        dec2 = self.upconv2(dec3)
-        dec2 = torch.cat((dec2, enc2), dim=1)
-        dec2 = self.decoder2(dec2)
-        dec1 = self.upconv1(dec2)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
-
-    def forward_5(self, x):
-        enc1 = self.encoder1(x)
-        enc2 = self.encoder2(self.pool1(enc1))
-        enc3 = self.encoder3(self.pool2(enc2))
-        enc4 = self.encoder4(self.pool3(enc3))
-        enc5 = self.encoder5(self.pool4(enc4))
-
-        bottleneck = self.bottleneck(self.pool5(enc5))
-
-        dec5 = self.upconv5(bottleneck)
-        dec5 = torch.cat((dec5, enc5), dim=1)
-        dec5 = self.decoder5(dec5)
-
-        dec4 = self.upconv4(dec5)
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
-        dec3 = self.upconv3(dec4)
-        dec3 = torch.cat((dec3, enc3), dim=1)
-        dec3 = self.decoder3(dec3)
-        dec2 = self.upconv2(dec3)
-        dec2 = torch.cat((dec2, enc2), dim=1)
-        dec2 = self.decoder2(dec2)
-        dec1 = self.upconv1(dec2)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
-
-    def forward_6(self, x):
+    def forward(self, x):
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
@@ -181,87 +119,28 @@ class TrueUNet(nn.Module):
         dec1 = self.decoder1(dec1)
         return self.conv(dec1)
 
-    def forward_7(self, x):
-        enc1 = self.encoder1(x)
-        enc2 = self.encoder2(self.pool1(enc1))
-        enc3 = self.encoder3(self.pool2(enc2))
-        enc4 = self.encoder4(self.pool3(enc3))
-        enc5 = self.encoder5(self.pool4(enc4))
-        enc6 = self.encoder6(self.pool5(enc5))
-        enc7 = self.encoder7(self.pool6(enc6))
-
-        bottleneck = self.bottleneck(self.pool7(enc7))
-
-        dec7 = self.upconv7(bottleneck)
-        dec7 = torch.cat((dec7, enc7), dim=1)
-        dec7 = self.decoder7(dec7)
-
-        dec6 = self.upconv6(dec7)
-        dec6 = torch.cat((dec6, enc6), dim=1)
-        dec6 = self.decoder6(dec6)
-        dec5 = self.upconv5(dec6)
-        dec5 = torch.cat((dec5, enc5), dim=1)
-        dec5 = self.decoder5(dec5)
-        dec4 = self.upconv4(dec5)
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
-        dec3 = self.upconv3(dec4)
-        dec3 = torch.cat((dec3, enc3), dim=1)
-        dec3 = self.decoder3(dec3)
-        dec2 = self.upconv2(dec3)
-        dec2 = torch.cat((dec2, enc2), dim=1)
-        dec2 = self.decoder2(dec2)
-        dec1 = self.upconv1(dec2)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
-
-
-    def forward(self, x):
-        if self.n_blocks == 4:
-            out = self.forward_4(x)
-        elif self.n_blocks == 5:
-            out = self.forward_5(x)
-        elif self.n_blocks == 6:
-            out = self.forward_6(x)
-        elif self.n_blocks == 7:
-            out = self.forward_7(x)
-        else:
-            raise ValueError(f"Incorrect number of blocks used: {self.n_blocks}")
-        return self.cleaner(x, out)
-
     @staticmethod
     def _block(in_channels, features, name):
         return nn.Sequential(
-            OrderedDict(
-                [
-                    (
-                        name + "conv1",
-                        nn.Conv2d(
-                            in_channels=in_channels,
-                            out_channels=features,
-                            kernel_size=3,
-                            padding=1,
-                            bias=False,
-                        ),
-                    ),
-                    (name + "norm1", nn.BatchNorm2d(num_features=features)),
-                    (name + "relu1", nn.ReLU(inplace=True)),
-                    (
-                        name + "conv2",
-                        nn.Conv2d(
-                            in_channels=features,
-                            out_channels=features,
-                            kernel_size=3,
-                            padding=1,
-                            bias=False,
-                        ),
-                    ),
-                    (name + "norm2", nn.BatchNorm2d(num_features=features)),
-                    (name + "relu2", nn.ReLU(inplace=True)),
-                ]
-            )
-        )
+            OrderedDict([
+                (name + "conv1",
+                 nn.Conv2d(
+                     in_channels=in_channels,
+                     out_channels=features,
+                     kernel_size=3,
+                     padding=1,
+                     bias=False)),
+                (name + "norm1", nn.BatchNorm2d(num_features=features)),
+                (name + "relu1", nn.ReLU(inplace=True)),
+                (name + "conv2",
+                 nn.Conv2d(
+                     in_channels=features,
+                     out_channels=features,
+                     kernel_size=3,
+                     padding=1,
+                     bias=False)),
+                (name + "norm2", nn.BatchNorm2d(num_features=features)),
+                (name + "relu2", nn.ReLU(inplace=True))]))
 
 
 def downsample(

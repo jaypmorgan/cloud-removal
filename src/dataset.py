@@ -5,6 +5,7 @@ assumes that there is only a single sample per day, and this sample
 was the one with cloud coverage on.
 """
 # internal imports
+from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional, Union
 from collections import namedtuple
@@ -114,12 +115,6 @@ class SyntheticClouds(Dataset):
                 status_ok = True
         return status_ok
 
-    def _get_date(self, input_p, target_p, mask_p):
-        i = sunpy.map.Map(input_p)
-        o = sunpy.map.Map(target_p)
-        m = np.load(mask_p, allow_pickle=True)
-        return i, o, m
-
     def __add__(self, other):
         new_cls = deepcopy(self)
         new_cls.data = pd.concat([self.data, other.data])
@@ -161,9 +156,11 @@ class SyntheticClouds(Dataset):
         >>> data.filter(lambda s: dfp.has_props(
                  s, {"type": "Ca II", "score": lambda v: v < 0.7}))
         """
-        self.data = dfp.records_to_dataframe(dfp.lfilter(
+        filtered_data = dfp.records_to_dataframe(dfp.lfilter(
             condition, dfp.dataframe_to_records(self.data)))
-        return self
+        new_cls = deepcopy(self)
+        new_cls.data = filtered_data
+        return new_cls
 
     def split(self, condition):
         """Split dataset into two by condition
@@ -199,10 +196,8 @@ class SyntheticClouds(Dataset):
         >>> train, test = s.split(lambda sample: dfp.has_props(sample, {"subset": "train"}))
 
         """
-        left = dfp.records_to_dataframe(dfp.lfilter(
-            condition, dfp.dataframe_to_records(self.data)))
-        right = dfp.records_to_dataframe(dfp.lfilter(
-            dfp.inverse(condition), dfp.dataframe_to_records(self.data)))
+        left = self.filter(condition)
+        right = self.filter(dfp.inverse(condition))
         cls_left = deepcopy(self)
         cls_left.data = left
         cls_right = deepcopy(self)
@@ -269,7 +264,8 @@ class CloudsTransform:
     By default, horizontal and vertical image flipping is turned
     off. By supplying these arguments > 0.0, then flipping can be
     applied to both input and target (such that both input and it's
-    target still match after flipping).
+    target still match after flipping). This value is a percentage,
+    thus 0.5 means that flipping will occur 50% of the time.
 
     >>> clouds = CloudsDataset(
             transform=CloudsTransform(
