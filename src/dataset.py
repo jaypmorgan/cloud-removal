@@ -103,7 +103,7 @@ class SyntheticClouds(Dataset):
 
         # prompt the user if they want to download to the parent
         # directory
-        answer = input(f"Data cannot be found in the directory '{self.root}'. Do you want to download it? [y/n] ")
+        answer = input(f"Data cannot be found in the directory '{self.root}'. Do you want to download it? (Required space: ~16GB) [y/n] ")
         status_ok = False
         
         while answer not in ["y", "n"]:
