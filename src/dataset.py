@@ -63,7 +63,7 @@ class SyntheticClouds(Dataset):
     """
     def __init__(
             self,
-            catalogue: Filepath,
+            catalogue: Filepath = "data/synthetic-catalogue.csv",
             transform: Optional[Callable] = None,
             download: bool = False,
     ):
@@ -96,16 +96,23 @@ class SyntheticClouds(Dataset):
     def _download_data(self):
         import urllib.request
         import zipfile
-        
-        answer = input(f"Data cannot be found at '{self.root}'. Do you want to download it? [y/n] ")
+
+        # ensure the parent directory exists before trying to download
+        # the zip file
+        self.root.mkdir(exist_ok=True, parents=True)
+
+        # prompt the user if they want to download to the parent
+        # directory
+        answer = input(f"Data cannot be found in the directory '{self.root}'. Do you want to download it? [y/n] ")
         status_ok = False
+        
         while answer not in ["y", "n"]:
             answer = input(f"Please answer with 'y' or 'n', you entered {answer}")
         if answer == "y":
             def progress(block_num, block_size, total_size):
                 if block_num % 10 == 0:
-                    down_size = f"{(block_num*block_size)/1000000000:.2f}/{total_size/1000000000:.2f} GB"
-                    perc_size = f"{round(100*((block_num*block_size)/total_size), 2):.2f}"
+                    down_size = f"{(block_num*block_size)/1000000000:.4f}/{total_size/1000000000:.4f} GB"
+                    perc_size = f"{round(100*((block_num*block_size)/total_size), 4):.4f}"
                     print(f"Downloading archive: {down_size} ({perc_size}%)", end="\r", flush=True)
             download_path = "https://zenodo.org/record/7684201/files/synthetic-clouds.zip?download=1"
             urllib.request.urlretrieve(download_path, self.root/"synthetic-clouds.zip", progress)
