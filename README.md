@@ -7,14 +7,19 @@ ground-based observations. These codes were presented in the article
 'Removing cloud shadows from ground-based solar imagery, Chaoui et
 al.'
 
-## Installation
+<!-- ## Installation -->
 
-We have not published this package on PyPi, but that doesn't mean you
-can't install it:
+<!-- We have not published this package on PyPi, but that doesn't mean you -->
+<!-- can't install it: -->
 
-```bash
-pip install git+https://github.com/jaypmorgan/cloud-removal.git
-```
+<!-- ```bash -->
+<!-- pip install git+https://github.com/jaypmorgan/cloud-removal.git -->
+<!-- ``` -->
 
-## Usage
+<!-- ## Usage -->
 
+<!-- The dataset can be loaded with: -->
+
+<!-- ```python -->
+<!-- from  -->
+<!-- ``` -->
