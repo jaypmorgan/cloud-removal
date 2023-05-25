@@ -5,6 +5,7 @@ assumes that there is only a single sample per day, and this sample
 was the one with cloud coverage on.
 """
 # internal imports
+import random
 from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -13,12 +14,15 @@ from collections import namedtuple
 # external imports
 import dfp
 import sunpy
+import sunpy.map
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms as tv
 
+# custom imports
+from . import utils
 
 Filepath = Union[Path, str]
 item = namedtuple("item", ["input", "mask", "target", "uid"])
@@ -61,15 +65,16 @@ class SyntheticClouds(Dataset):
     >>> full_data = train_data + test_data
 
     """
+
     def __init__(
-            self,
-            catalogue: Filepath = "data/synthetic-catalogue.csv",
-            transform: Optional[Callable] = None,
-            download: bool = False,
+        self,
+        catalogue: Filepath = "data/synthetic-catalogue.csv",
+        transform: Optional[Callable] = None,
+        download: bool = False,
     ):
         catalogue = Path(catalogue)
         if catalogue.is_dir():
-            catalogue = catalogue/"synthetic-catalogue.csv"
+            catalogue = catalogue / "synthetic-catalogue.csv"
         self.root = Path(catalogue).parent
         self.download = download
         self.transform = transform
@@ -94,7 +99,6 @@ class SyntheticClouds(Dataset):
         return "Morgan, Jay Paul, Paiement, Adeline, & Aboudarham, Jean. (2023). Synthetically generated clouds on ground-based solar observations [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7684200"
 
     def _download_data(self):
-        import urllib.request
         import zipfile
 
         # ensure the parent directory exists before trying to download
@@ -103,24 +107,36 @@ class SyntheticClouds(Dataset):
 
         # prompt the user if they want to download to the parent
         # directory
-        answer = input(f"Data cannot be found in the directory '{self.root}'. Do you want to download it? (Required space: ~16GB) [y/n] ")
+        answer = input(
+            f"Data cannot be found in the directory '{self.root}'. Do you want to download it? (Required space: ~16GB) [y/n] "
+        )
         status_ok = False
-        
+
         while answer not in ["y", "n"]:
-            answer = input(f"Please answer with 'y' or 'n', you entered {answer}")
+            answer = input(f"Please answer with 'y' or 'n', you entered {answer}: ")
         if answer == "y":
-            def progress(block_num, block_size, total_size):
-                if block_num % 10 == 0:
-                    down_size = f"{(block_num*block_size)/1000000000:.4f}/{total_size/1000000000:.4f} GB"
-                    perc_size = f"{round(100*((block_num*block_size)/total_size), 4):.4f}"
-                    print(f"Downloading archive: {down_size} ({perc_size}%)", end="\r", flush=True)
             download_path = "https://zenodo.org/record/7684201/files/synthetic-clouds.zip?download=1"
-            urllib.request.urlretrieve(download_path, self.root/"synthetic-clouds.zip", progress)
-            with zipfile.ZipFile(self.root/"synthetic-clouds.zip", "r") as f:
+            utils.download(download_path, self.root / "synthetic-clouds.zip")
+            print("Unpacking archive...")
+            with zipfile.ZipFile(self.root / "synthetic-clouds.zip", "r") as f:
                 f.extractall(self.root)
-            if (self.root/"synthetic-catalogue.csv").exists():
+            if (self.root / "synthetic-catalogue.csv").exists():
                 status_ok = True
+            self._update_catalogue_paths()
         return status_ok
+
+    def _update_catalogue_paths(self):
+        # fix path locations in CSV file
+        df = dfp.pipe(
+            dfp.port_csv(self.root/"synthetic-catalogue.csv"),
+            lambda d: pd.DataFrame(d[1:], columns=d[0]))
+        path_fixer = lambda path: str(path).replace(
+            "data/datasets/cloud-removal/synthetic", str(self.root)+"/")
+        df["input"] = df["input"].apply(path_fixer)
+        df["target"] = df["target"].apply(path_fixer)
+        df["disk_mask"] = df["disk_mask"].apply(path_fixer)
+        df.to_csv(self.root/"synthetic-catalogue.csv", index=False)
+        self.data = pd.read_csv(self.root/"synthetic-catalogue.csv")
 
     def __add__(self, other):
         new_cls = deepcopy(self)
@@ -163,8 +179,9 @@ class SyntheticClouds(Dataset):
         >>> data.filter(lambda s: dfp.has_props(
                  s, {"type": "Ca II", "score": lambda v: v < 0.7}))
         """
-        filtered_data = dfp.records_to_dataframe(dfp.lfilter(
-            condition, dfp.dataframe_to_records(self.data)))
+        filtered_data = dfp.records_to_dataframe(
+            dfp.lfilter(condition, dfp.dataframe_to_records(self.data))
+        )
         new_cls = deepcopy(self)
         new_cls.data = filtered_data
         return new_cls
@@ -205,21 +222,18 @@ class SyntheticClouds(Dataset):
         """
         left = self.filter(condition)
         right = self.filter(dfp.inverse(condition))
-        cls_left = deepcopy(self)
-        cls_left.data = left
-        cls_right = deepcopy(self)
-        cls_right.data = right
-        return cls_left, cls_right
+        return left, right
 
     def __repr__(self):
         return self.__str__()
 
     def __str__(self):
-        return (f"{type(self).__name__}"
-                f"\n\t- Number of samples: {len(self)}"
-                f"\n\t- Subset: {'train' if self.train else 'test'}"
-                f"\n\t- Columns: {self.data.columns.tolist()}"
-                f"\n\n{self.data.head(5)}")
+        return (
+            f"{type(self).__name__}"
+            f"\n\t- Number of samples: {len(self)}"
+            f"\n\t- Columns: {self.data.columns.tolist()}"
+            f"\n\n{self.data.head(5)}"
+        )
 
     def __getitem__(self, index) -> Union[list, item]:
         if isinstance(index, slice):
@@ -231,7 +245,9 @@ class SyntheticClouds(Dataset):
         inp = sunpy.map.Map(row["input"])
         oup = sunpy.map.Map(row["target"])
         msk = np.load(row["disk_mask"], allow_pickle=True)
-        msk = (msk[None, ...]==False).astype(np.float32)  # inverse the mask to outside disk
+        msk = (msk[None, ...] == False).astype(
+            np.float32
+        )  # inverse the mask to outside disk
         uid = row["uid"]
         if self.transform:
             inp, oup, msk = self.transform(inp, oup, msk)
@@ -248,9 +264,11 @@ class CloudsTransform:
     Parameters
     ----------
     hflip_p : float
-        The probability of horizontal flipping (0.0 no flipping, 1.0 always flip).
+        The probability of horizontal flipping (0.0 no flipping,
+        1.0 always flip).
     vflip_p : float
-        The probability of vertical flipping (0.0 no flipping, 1.0 always flip).
+        The probability of vertical flipping (0.0 no flipping,
+        1.0 always flip).
     tensor_wrapper : Callable[np.ndarray]
         (default: torch.FloatTensor) The function to wrap a numpy array into a
         tensor. This allows you to convert the data into pytorch's tensor, or
@@ -291,14 +309,14 @@ class CloudsTransform:
     >>> clouds = CloudsDataset(
              transform=CloudsTransform(tensor_wrapper=to_tensorflow_tensor))
     >>> clouds[0]  # now they are ready for tensorflow.
-    
+
     """
 
     def __init__(
-            self,
-            hflip_p: float = 0.0,
-            vflip_p: float = 0.0,
-            tensor_wrapper = torch.FloatTensor
+        self,
+        hflip_p: float = 0.0,
+        vflip_p: float = 0.0,
+        tensor_wrapper: Callable = torch.FloatTensor,
     ):
         assert 0.0 <= hflip_p <= 1.0
         assert 0.0 <= vflip_p <= 1.0
@@ -308,16 +326,22 @@ class CloudsTransform:
         self.tensor_wrapper: Callable[np.ndarray] = tensor_wrapper
 
     def _basic_transform(self, x):
-        x = x.data.astype(np.float32)
-        return self.tensor_wrapper(x[None,...])  # add batch dimension
+        if isinstance(x, sunpy.map.GenericMap):
+            x = x.data.astype(np.float32)
+            x = x[None, ...]  # add channel dimension
+        else:
+            x = x.astype(np.float32)
+        return self.tensor_wrapper(x)
 
-    def __apply_both(self, *args):
+    def __apply_many(self, f, *args):
         return [f(x) for x in args]
 
     def __call__(self, *args):
         hflip = random.random() < self.hflip_p
         vflip = random.random() < self.vflip_p
         args = self.__apply_many(self._basic_transform, *args)
-        if hflip: args = self.__apply_many(tv.functional.hflip, *args)
-        if vflip: args = self.__apply_many(tv.functional.vflip, *args)
+        if hflip:
+            args = self.__apply_many(tv.functional.hflip, *args)
+        if vflip:
+            args = self.__apply_many(tv.functional.vflip, *args)
         return args
