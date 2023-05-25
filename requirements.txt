@@ -1,7 +1,7 @@
 sunpy
 dfp
 numpy
-pandas
+pandas==1.*
 torch
 torchvision
 matplotlib

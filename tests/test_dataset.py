@@ -1,5 +1,5 @@
 import dfp
-from src.dataset import SyntheticClouds, CloudsTransform
+from cloudremoval.dataset import SyntheticClouds, CloudsTransform
 
 # download the data
 dataset = SyntheticClouds(download=True)

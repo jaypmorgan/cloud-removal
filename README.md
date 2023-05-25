@@ -7,13 +7,28 @@ ground-based observations. These codes were presented in the article
 'Removing cloud shadows from ground-based solar imagery, Chaoui et
 al.'
 
+## Install
+
+You can pip install directly from this github repo:
+
+```bash
+pip install git+https://github.com/jaypmorgan/cloud-removal.git
+```
+
+or if you've cloned the repo to a local directory:
+
+```bash
+cd cloudremoval
+pip install ./
+```
+
 ## Usage
 
-Using the existing synthetic dataset:
+Using the existing synthetic clouds dataset:
 
 ```python
 import dfp
-from src.dataset import SyntheticClouds, CloudsTransform
+from cloudremoval.dataset import SyntheticClouds, CloudsTransform
 
 # download the data
 dataset = SyntheticClouds(download=True)
@@ -39,7 +54,7 @@ inp2 = item.input
 To create a model, or load one using existing model weights:
 
 ```python
-from src.model import CloudRemover
+from cloudremoval.model import CloudRemover
 
 # create a new model from scratch (i.e. random model weights)
 model = CloudRemover()

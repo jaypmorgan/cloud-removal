@@ -1,4 +1,4 @@
-from src.model import CloudRemover
+from cloudremoval.model import CloudRemover
 
 # create a model
 model = CloudRemover()
