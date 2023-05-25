@@ -37,7 +37,7 @@ class CloudAddition(CloudIdentity):
     def forward(self, cloudy_input, cloud_pred):
         cloud_pred = self.activation(cloud_pred)
         if self.squash:
-            cloud_pred = cloud_pred * 0.5 + 0.5
+            cloud_pred = cloud_pred * 0.5 - 0.5
         return cloudy_input - cloud_pred
 
 
@@ -57,7 +57,7 @@ class UNet(nn.Module):
     def __init__(
         self,
         n_blocks: int = 6,
-        cleaner=CloudAddition(activation=dfp.identity, squash=False),
+        cleaner=CloudAddition(),
         in_channels=1,
         out_channels=1,
         init_features=16,
@@ -148,7 +148,7 @@ class UNet(nn.Module):
         dec1 = self.upconv1(dec2)
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
-        return self.conv(dec1)
+        return self.cleaner(x, self.conv(dec1))
 
     @staticmethod
     def _block(in_channels, features, name):

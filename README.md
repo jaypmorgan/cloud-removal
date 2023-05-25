@@ -64,4 +64,12 @@ model = CloudRemover(pretrained=True)
 
 # create a model using a different wavelength
 model = CloudRemover(wavelength="H-alpha", pretrained=True)
+
+# test making of predictions
+dataset = SyntheticClouds(download=True, transform=CloudsTransform())
+model = CloudRemover(pretrained=True)
+out = model(dataset[0].input[None,...])*dataset[0].mask[None,...]
+
+import matplotlib.pyplot as plt
+plt.imshow(out[0,0].detach().cpu().numpy(), cmap="Greys_r")
 ```
