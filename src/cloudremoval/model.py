@@ -56,7 +56,6 @@ class CloudDivision(CloudIdentity):
 class UNet(nn.Module):
     def __init__(
         self,
-        n_blocks: int = 6,
         cleaner=CloudAddition(),
         in_channels=1,
         out_channels=1,
@@ -65,7 +64,6 @@ class UNet(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.n_blocks = n_blocks
         self.cleaner = cleaner
         self.features = init_features
 
